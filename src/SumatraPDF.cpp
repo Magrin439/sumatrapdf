@@ -8343,6 +8343,8 @@ void EnterFullScreen(MainWindow* win, bool presentation) {
     // ProjoPDF: a half-screen window isn't maximized
     if (win->projoHalf == ProjoHalf::None) {
         ws |= WS_MAXIMIZE;
+    } else {
+        ws &= ~WS_MAXIMIZE;
     }
     Rect rect = ProjoFullscreenRect(win);
 
@@ -9032,7 +9034,8 @@ static void FrameOnChar(MainWindow* win, WPARAM key, LPARAM info = 0) {
 
     switch (key) {
         // '+' unshifted, or the two Swiss-layout alternatives.
-        // '=' opens the settings palette instead.
+        // ProjoPDF: '=' zooms in too (unshifted '+' key on AZERTY / QWERTY)
+        case '=':
         case '+':
         case 0xE0:
         case 0xE4: {
@@ -14294,6 +14297,11 @@ static LRESULT CALLBACK WndProcSumatraFrame(HWND hwnd, UINT msg, WPARAM wp, LPAR
             break;
 
         case WM_GETMINMAXINFO:
+            // ProjoPDF: a split-screen half can be narrower than the usual
+            // minimum width (it overlapped the other half)
+            if (win && win->projoHalf != ProjoHalf::None) {
+                return 0;
+            }
             return OnFrameGetMinMaxInfo((MINMAXINFO*)lp);
 
         case WM_ENTERSIZEMOVE:
