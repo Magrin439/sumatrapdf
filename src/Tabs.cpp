@@ -42,6 +42,7 @@
 #include "Tabs.h"
 #include "MenuDefs.h"
 #include "TabsCommon.h"
+#include "AppTools.h"
 
 void UpdateTabPageText(WindowTab* tab) {
     if (!tab || !tab->win || !tab->win->tabsCtrl) {
@@ -66,8 +67,11 @@ static void UpdateTabTitle(WindowTab* tab) {
     // a "+" Home tab a document was opened in is sized like the other documents
     TabInfo* ti = win->tabsCtrl->GetTab(idx);
     if (ti) {
-        ti->fitToLabel = tab->IsAboutTab();
+        ti->fitToLabel = tab->IsAboutTab() || tab->projoPinned;
     }
+    // ProjoPDF: a document loaded after its tab was created may be a pinned file
+    ProjoSyncTabPin(tab);
+    idx = win->GetTabIdx(tab);
     win->tabsCtrl->SetTextAndTooltip(idx, title, tooltip);
     UpdateTabPageText(tab);
 }
@@ -367,6 +371,8 @@ static void TabsContextMenu(TabsCtrl* tabsCtrl, VirtMouseEvent* ev) {
     if (!tabUnderMouse->ctrl) {
         MenuSetEnabled(popup, CmdSetTabColor, false);
     }
+    // ProjoPDF: checked when the tab is pinned
+    MenuSetChecked(popup, CmdProjoTogglePinTab, tabUnderMouse->projoPinned);
     // the save/discard items only make sense when the document has unsaved
     // changes (e.g. filled form fields, added annotations); otherwise remove
     // them, then clean up the separator they leave behind
@@ -409,6 +415,14 @@ static void TabsContextMenu(TabsCtrl* tabsCtrl, VirtMouseEvent* ev) {
         }
         case CmdShowInFolder: {
             ShowFileInFolder(win, tabUnderMouse->filePath);
+            return;
+        }
+        case CmdProjoTogglePinTab: {
+            ProjoTogglePinTab(tabUnderMouse);
+            return;
+        }
+        case CmdProjoSplitView: {
+            ProjoStartSplit(win, tabUnderMouse);
             return;
         }
         case CmdCopyFilePath: {
@@ -668,6 +682,8 @@ WindowTab* AddTabToWindow(MainWindow* win, WindowTab* tab, bool deferUpdate) {
         tabs->SetSelected(insertedIdx);
         UpdateTabWidth(win);
     }
+    // ProjoPDF: a pinned file goes to the pinned zone at the left
+    ProjoSyncTabPin(tab);
     return tab;
 }
 
@@ -772,7 +788,164 @@ void MoveTab(MainWindow* win, int dir) {
     if (win->GetTab(idx)->IsPinnedHomeTab() || win->GetTab(newIdx)->IsPinnedHomeTab()) {
         return;
     }
+    // ProjoPDF: pinned and unpinned tabs don't swap across the pinned zone
+    if (win->GetTab(idx)->projoPinned != win->GetTab(newIdx)->projoPinned) {
+        return;
+    }
     win->tabsCtrl->SwapTabs(idx, newIdx);
     win->tabsCtrl->SetSelected(newIdx);
     win->tabsCtrl->LayoutTabs();
+}
+
+// ---- ProjoPDF: pinned document tabs ----
+//
+// The pinned files are listed, one path per line, in ProjoPDF-pinned.txt in
+// the settings folder. A tab showing a pinned file:
+//   - sits at the left of the tab bar, right after the Home tab
+//   - is compact, without a close button, with a bar along its bottom
+//   - is spared by Close All / Close Other / Close Left / Close Right
+//   - is reopened at startup if it isn't already open
+//
+//   [Home][Rituels][Calcul] | [Séance 1][Séance 2] ... [+]
+//    <---- pinned zone ---->
+
+static Vec<Str> gProjoPinned;
+static bool gProjoPinnedLoaded = false;
+
+static TempStr ProjoPinnedListPathTemp() {
+    return path::JoinTemp(GetAppDataDirTemp(), StrL("ProjoPDF-pinned.txt"));
+}
+
+static void ProjoLoadPinned() {
+    if (gProjoPinnedLoaded) {
+        return;
+    }
+    gProjoPinnedLoaded = true;
+    Str data = file::ReadFile(ProjoPinnedListPathTemp());
+    Str rest = data;
+    Str line;
+    while (str::NextLine(rest, line, rest)) {
+        str::TrimWSInPlace(line, str::TrimOpt::Both);
+        if (len(line) == 0) {
+            continue;
+        }
+        VecAppend(gProjoPinned, str::Dup(line));
+    }
+    str::Free(data);
+}
+
+static void ProjoSavePinned() {
+    str::Builder sb;
+    for (int i = 0; i < len(gProjoPinned); i++) {
+        sb.Append(gProjoPinned[i]);
+        sb.Append(StrL("\r\n"));
+    }
+    file::WriteFile(ProjoPinnedListPathTemp(), ToStr(sb));
+}
+
+static int ProjoPinnedIdx(Str path) {
+    if (len(path) == 0) {
+        return -1;
+    }
+    ProjoLoadPinned();
+    for (int i = 0; i < len(gProjoPinned); i++) {
+        if (str::EqI(gProjoPinned[i], path)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int ProjoPinnedCount() {
+    ProjoLoadPinned();
+    return len(gProjoPinned);
+}
+
+Str ProjoPinnedAt(int idx) {
+    ProjoLoadPinned();
+    if (idx < 0 || idx >= len(gProjoPinned)) {
+        return {};
+    }
+    return gProjoPinned[idx];
+}
+
+static bool ProjoIsPinnable(WindowTab* tab) {
+    return tab && !tab->IsNonDocumentTab() && len(tab->filePath) > 0;
+}
+
+// move a pinned tab into the pinned zone, an unpinned one right after it
+static void ProjoPlaceTab(WindowTab* tab) {
+    MainWindow* win = tab->win;
+    TabsCtrl* tc = win->tabsCtrl;
+    int idx = win->GetTabIdx(tab);
+    if (idx < 0) {
+        return;
+    }
+    // leading pinned tabs, this one excluded
+    int nTabs = tc->TabCount();
+    int zone = 0;
+    for (int i = 0; i < nTabs; i++) {
+        if (i == idx) {
+            continue;
+        }
+        TabInfo* other = tc->GetTab(i);
+        if (!other || !(other->isPinned || other->isDocPinned)) {
+            break;
+        }
+        zone++;
+    }
+    zone = std::min(zone, nTabs - 1);
+    if (tab->projoPinned && idx > zone) {
+        tc->MoveTab(idx, zone);
+    } else if (!tab->projoPinned && idx < zone) {
+        tc->MoveTab(idx, zone);
+    }
+}
+
+// make the tab's pinned state follow the list of pinned files
+void ProjoSyncTabPin(WindowTab* tab) {
+    if (!tab || !tab->win || !tab->win->tabsCtrl) {
+        return;
+    }
+    MainWindow* win = tab->win;
+    TabInfo* ti = win->tabsCtrl->GetTab(win->GetTabIdx(tab));
+    if (!ti) {
+        return;
+    }
+    bool pinned = ProjoIsPinnable(tab) && ProjoPinnedIdx(tab->filePath) >= 0;
+    bool changed = (tab->projoPinned != pinned) || (ti->isDocPinned != pinned);
+    tab->projoPinned = pinned;
+    ti->isDocPinned = pinned;
+    ti->fitToLabel = tab->IsAboutTab() || pinned;
+    if (!changed) {
+        return;
+    }
+    ProjoPlaceTab(tab);
+    win->tabsCtrl->LayoutTabs();
+    win->tabsCtrl->ScheduleRepaint();
+}
+
+void ProjoTogglePinTab(WindowTab* tab) {
+    if (!ProjoIsPinnable(tab)) {
+        return;
+    }
+    // copy: the tab may be closed while syncing other windows
+    TempStr path = str::DupTemp(tab->filePath);
+    int idx = ProjoPinnedIdx(path);
+    if (idx >= 0) {
+        str::Free(gProjoPinned[idx]);
+        VecRemoveAt(gProjoPinned, idx);
+    } else {
+        VecAppend(gProjoPinned, str::Dup(path));
+    }
+    ProjoSavePinned();
+
+    // the same file can be open in several tabs and windows
+    for (MainWindow* win : gWindows) {
+        for (WindowTab* t : win->Tabs()) {
+            if (str::EqI(t->filePath, path)) {
+                ProjoSyncTabPin(t);
+            }
+        }
+    }
 }

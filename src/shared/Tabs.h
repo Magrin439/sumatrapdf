@@ -40,6 +40,12 @@ TempStr MakeTabTooltipTemp(Str path, bool dirty = false);
 void CloseAllTabs(MainWindow*);
 void MoveTab(MainWindow* win, int dir);
 
+// ProjoPDF: pinned document tabs (see Tabs.cpp)
+void ProjoSyncTabPin(WindowTab* tab);
+void ProjoTogglePinTab(WindowTab* tab);
+int ProjoPinnedCount();
+Str ProjoPinnedAt(int idx);
+
 // the tab strip shows a suffix with the current page ("3/17") when
 // ShowPageNumberInTabs is on
 TempStr TabPageSuffixTemp(WindowTab* tab);

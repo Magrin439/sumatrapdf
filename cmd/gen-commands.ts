@@ -383,6 +383,9 @@ const commandsRaw = [
     "CmdViewAsHex", "View As Hex",
     "CmdAIChatWithCustomAPI", "Custom AI chat...",
     "CmdSaveTrimmedPagesAs", "Save Trimmed Pages As...",
+    // ProjoPDF
+    "CmdProjoTogglePinTab", "Onglet : épingler / désépingler",
+    "CmdProjoSplitView", "Écran partagé : deux documents côte à côte",
 ];
 
 // removed slots are dropped: nothing outside the generators should see them

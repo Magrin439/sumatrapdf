@@ -8,7 +8,7 @@ enum class FileType : u8;
 
 #include "OverlayScrollbar.h"
 
-constexpr const WCHAR* kFrameClassName = L"SUMATRA_PDF_FRAME";
+constexpr const WCHAR* kFrameClassName = L"PROJO_PDF_FRAME";
 
 constexpr int kFrameResizeHitTest = 5;
 
@@ -210,6 +210,8 @@ MainWindow* FindMainWindowBySyncFile(Str path, bool focusTab);
 void ExecuteCmd(MainWindow* win, int cmdId);
 void OpenNextPrevFileInFolder(MainWindow* win, bool forward, Str pathToDelete = {});
 void SelectTabInWindow(WindowTab*);
+// ProjoPDF: split screen; rightTab may be null (the previously viewed tab)
+void ProjoStartSplit(MainWindow* win, WindowTab* rightTab);
 
 bool IsDocumentOpenOrLoading(Str file);
 void BeginDocumentLoad(Str file);

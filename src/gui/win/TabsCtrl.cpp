@@ -207,7 +207,8 @@ void TabCtrl::SetBounds(Rect r) {
 // The pinned Home tab has no room for one
 bool TabCtrl::CloseVisible() {
     bool hasRoom = !ti->fitToLabel || !ti->isPinned;
-    return ti->canClose && hasRoom && IsSelected();
+    // ProjoPDF: pinned document tabs have no ✕ either
+    return ti->canClose && hasRoom && IsSelected() && !ti->isDocPinned;
 }
 
 void TabCtrl::Paint(VirtPaintCtx& ctx) {
@@ -246,7 +247,8 @@ void TabCtrl::Paint(VirtPaintCtx& ctx) {
     }
     PlatformFont* pageFont = font;
     int pageDx = 0;
-    if (len(ti->pageText) > 0) {
+    // ProjoPDF: a compact pinned tab shows its name only
+    if (len(ti->pageText) > 0 && !ti->isDocPinned) {
         PlatformFont* scaled = GetScaledPlatformFont(font, 85);
         if (scaled) {
             pageFont = scaled;
@@ -275,7 +277,7 @@ void TabCtrl::Paint(VirtPaintCtx& ctx) {
         // the margins are the tab's own: see FitToLabelDx(). The label keeps its
         // place whether the ✕ shows or not
         rFile = r;
-        if (!ti->isPinned) {
+        if (!ti->isPinned && !ti->isDocPinned) {
             int room = CloseRoomDx(r.dy);
             rFile.dx = std::max(0, rFile.dx - room);
             if (isRtl) {
@@ -283,6 +285,14 @@ void TabCtrl::Paint(VirtPaintCtx& ctx) {
             }
         }
         fmt = gfxTextEllipsis | gfxTextVCenter | gfxTextCenter;
+    }
+    if (ti->isDocPinned) {
+        // ProjoPDF: margins inside the compact tab, and a bar along the bottom
+        // that marks it as pinned
+        int pad = DpiScale(6);
+        rFile = {r.x + pad, r.y, std::max(0, r.dx - (2 * pad)), r.dy};
+        int barDy = DpiScale(3);
+        gfx->FillRect({r.x + DpiScale(2), r.Bottom() - barDy, std::max(0, r.dx - DpiScale(4)), barDy}, textColor);
     }
     gfx->DrawText(ti->text, rFile, fmt, font, textColor);
     if (pageDx > 0) {
@@ -519,6 +529,11 @@ static int FitToLabelDx(TabsCtrl* tabs, TabInfo* ti, int tabDy) {
     constexpr float kPxPerPt = 96.f / 72.f;
     int rem = DpiScale((int)(font->GetSize() * kPxPerPt + 0.5f));
     int dx = PlatformFontMeasureText(font, ti->text).dx + (2 * rem);
+    if (ti->isDocPinned) {
+        // ProjoPDF: compact, no ✕; long names are ellipsized
+        constexpr int kPinnedTabMaxDx = 180;
+        return std::min(dx, DpiScale(kPinnedTabMaxDx));
+    }
     if (!ti->isPinned) {
         dx += CloseRoomDx(tabDy);
     }
@@ -1093,6 +1108,23 @@ LRESULT TabsCtrl::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if ((dstIdx < TabCount()) && GetTab(dstIdx)->isPinned) {
                 return 0;
             }
+            // ProjoPDF: pinned documents stay in the pinned zone at the left,
+            // the others stay out of it
+            {
+                int zoneEnd = PinnedZoneEnd();
+                TabInfo* dragged = GetTab(selectedTab);
+                if (dragged && dragged->isDocPinned) {
+                    dstIdx = std::min(dstIdx, zoneEnd);
+                } else {
+                    dstIdx = std::max(dstIdx, zoneEnd);
+                }
+                if (dstIdx == selectedTab || dstIdx == selectedTab + 1) {
+                    return 0;
+                }
+                if ((dstIdx < TabCount()) && GetTab(dstIdx)->isPinned) {
+                    return 0;
+                }
+            }
             TriggerTabDragged(this, selectedTab, dstIdx);
             UpdateAfterDrag(this, selectedTab, dstIdx);
             ScheduleRepaint();
@@ -1315,6 +1347,38 @@ void TabsCtrl::SwapTabs(int idx1, int idx2) {
     tabs[idx1] = tabs[idx2];
     tabs[idx2] = tmp;
     RebuildTabCtrls();
+}
+
+// ProjoPDF: move the tab at `from` so that it ends up at index `to`
+void TabsCtrl::MoveTab(int from, int to) {
+    int n = TabCount();
+    if (from < 0 || from >= n || to < 0 || to >= n || from == to) {
+        return;
+    }
+    TabInfo* selected = GetTab(selectedIdx);
+    TabInfo* moved = tabs[from];
+    VecRemoveAt(tabs, from);
+    VecInsertAt(tabs, to, moved);
+    RebuildTabCtrls();
+    for (int i = 0; i < n; i++) {
+        if (tabs[i] == selected) {
+            selectedIdx = i;
+        }
+    }
+    tabHighlighted = -1;
+    tabHighlightedClose = -1;
+    LayoutTabs();
+    ScheduleRepaint();
+}
+
+// ProjoPDF: tabs [0, PinnedZoneEnd()) are the Home tab and the pinned documents
+int TabsCtrl::PinnedZoneEnd() {
+    int n = TabCount();
+    int i = 0;
+    while (i < n && (tabs[i]->isPinned || tabs[i]->isDocPinned)) {
+        i++;
+    }
+    return i;
 }
 
 // Note: the caller should take care of deleting userData

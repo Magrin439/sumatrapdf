@@ -329,6 +329,10 @@ static void ShowUpdateAvailableNotification(MainWindow* win, UpdateInfo* updateI
 // it without the confirmation dialog
 // download + install the update surfaced by the pre-release update notification
 void DownloadAndInstallPendingUpdate(MainWindow* win) {
+    // ProjoPDF: updates disabled (fork of SumatraPDF, never replaced by upstream)
+    if (kProjoNoUpdates) {
+        return;
+    }
     if (!win || !gPendingUpdate) {
         return;
     }
@@ -664,6 +668,10 @@ static void UpdateCheckAsync(UpdateCheckAsyncData* data) {
 // if autoCheck is true, this is a check *not* triggered by explicit action
 // of the user and therefore will show less UI
 void StartAsyncUpdateCheck(MainWindow* win, UpdateCheck updateCheckType) {
+    // ProjoPDF: updates disabled (fork of SumatraPDF, never replaced by upstream)
+    if (kProjoNoUpdates) {
+        return;
+    }
     if (!ShouldCheckForUpdate(updateCheckType, gUpdateCheckInProgress)) {
         return;
     }

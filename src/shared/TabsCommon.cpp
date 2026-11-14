@@ -164,7 +164,8 @@ WindowTab* HomeTabToReuse(MainWindow* win) {
 // every tab "close all" takes: all but the pinned Home tab
 void CollectClosableTabs(MainWindow* win, Vec<WindowTab*>& out) {
     for (WindowTab* tab : win->Tabs()) {
-        if (!tab->IsPinnedHomeTab()) {
+        // ProjoPDF: pinned documents are spared too
+        if (!tab->IsPinnedHomeTab() && !tab->projoPinned) {
             VecAppend(out, tab);
         }
     }
@@ -193,7 +194,8 @@ void CollectTabsToClose(MainWindow* win, WindowTab* currTab, Vec<WindowTab*>& to
             seenCurrent = true;
             continue;
         }
-        if (tab->IsPinnedHomeTab()) {
+        // ProjoPDF: pinned documents are spared too
+        if (tab->IsPinnedHomeTab() || tab->projoPinned) {
             continue;
         }
         VecAppend(toCloseOther, tab);

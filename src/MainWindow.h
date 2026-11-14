@@ -236,6 +236,13 @@ enum class ResizeHandle {
     Vertex,
 };
 
+// ProjoPDF: split screen (see ProjoStartSplit)
+enum class ProjoHalf {
+    None,
+    Left,
+    Right,
+};
+
 struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     explicit MainWindow(HWND hwnd);
     MainWindow(const MainWindow&) = delete;
@@ -579,6 +586,12 @@ struct MainWindow { // NOLINT(clang-analyzer-optin.performance.Padding)
     bool isQuickLook = false;
     WindowMode windowMode = WindowMode::Normal;
     int windowStateBeforePresentation = 0;
+    // ProjoPDF split screen: which half of the monitor this window covers in
+    // fullscreen / presentation, and the window showing the other half
+    ProjoHalf projoHalf = ProjoHalf::None;
+    MainWindow* projoPartner = nullptr;
+    // the right-hand window, created for the split and closed when it ends
+    bool projoSplitCreated = false;
     bool suppressFrameRedraw = false;
     // whether BeginFrameRedrawSuppression sent WM_SETREDRAW FALSE (it doesn't
     // for a hidden frame: WM_SETREDRAW TRUE would show the window)

@@ -382,6 +382,8 @@ const CommandInfo gCommands[] = {
     {CmdViewAsHex, "CmdViewAsHex\0", StrL("View As Hex")},
     {CmdAIChatWithCustomAPI, "CmdAIChatWithCustomAPI\0", StrL("Custom AI chat...")},
     {CmdSaveTrimmedPagesAs, "CmdSaveTrimmedPagesAs\0", StrL("Save Trimmed Pages As...")},
+    {CmdProjoTogglePinTab, "CmdProjoTogglePinTab\0", StrL("Onglet : épingler / désépingler")},
+    {CmdProjoSplitView, "CmdProjoSplitView\0", StrL("Écran partagé : deux documents côte à côte")},
 };
 const int gCommandsCount = dimofi(gCommands);
 

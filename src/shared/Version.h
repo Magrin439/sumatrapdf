@@ -42,4 +42,6 @@
 #define kCopyrightStr "Copyright 2006-2026 all authors (GPLv3)"
 #define kPublisherStr "Krzysztof Kowalczyk"
 
-#define kAppName "SumatraPDF"
+#define kAppName "ProjoPDF"
+// ProjoPDF fork: no update check, no auto-update
+#define kProjoNoUpdates 1

@@ -1279,6 +1279,14 @@ MenuDef menuDefContextTab[] = {
         (UINT_PTR)menuDefContextTabDuplicate,
     },
     {
+        TrN("Onglet épinglé"),
+        CmdProjoTogglePinTab,
+    },
+    {
+        TrN("Afficher à droite (écran partagé)"),
+        CmdProjoSplitView,
+    },
+    {
         TrN("Change Tab Color"),
         CmdSetTabColor,
     },

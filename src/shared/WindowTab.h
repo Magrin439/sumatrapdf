@@ -198,6 +198,9 @@ struct WindowTab {
     bool skipHistory = false;
     // a Home tab from the "+" button: an ordinary tab, unlike the pinned first one
     bool isExtraHome = false;
+    // ProjoPDF: pinned document tab (kept at the left, reopened at startup,
+    // spared by the bulk close commands)
+    bool projoPinned = false;
     // the temporary-folder notification was shown for filePath (#6437)
     bool temporaryFileNotified = false;
 

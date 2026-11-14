@@ -29,6 +29,9 @@ struct TabInfo {
     bool isError = false;
     // as wide as its label plus margins, with no room for a close button (Home)
     bool fitToLabel = false;
+    // ProjoPDF: a pinned document tab. Compact, no close button, kept at the
+    // left with the other pinned tabs (after the Home tab)
+    bool isDocPinned = false;
     UINT_PTR userData = 0;
     Color tabColor = (Color)0xfeffffff; // kColorUnset; use default tab color
 
@@ -163,6 +166,10 @@ struct TabsCtrl : VirtCtrl {
     TabInfo* GetTab(int idx);
     int TabDx(int idx);
     void SwapTabs(int idx1, int idx2);
+    // ProjoPDF: move a tab so that it ends up at index `to`; keeps the selection
+    void MoveTab(int from, int to);
+    // ProjoPDF: number of leading pinned tabs (Home + pinned documents)
+    int PinnedZoneEnd();
 
     void SetTextAndTooltip(int idx, Str text, Str tooltip);
     void SetPageText(int idx, Str);

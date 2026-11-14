@@ -166,7 +166,7 @@ using Gdiplus::SolidBrush;
 
 constexpr const WCHAR* kCanvasClassName = L"SUMATRA_PDF_CANVAS";
 
-constexpr const WCHAR* kSumatraWindowTitleW = L"SumatraPDF";
+constexpr const WCHAR* kSumatraWindowTitleW = L"ProjoPDF";
 
 // used to show it in debug, but is not very useful,
 // so always disable
@@ -3377,6 +3377,9 @@ void ShowErrorLoadingNotification(MainWindow* win, Str path, bool noSavePrefs, b
 }
 
 static void SetTabState(WindowTab* tab, TabState* state);
+// ProjoPDF: split screen (defined near ExitFullScreen)
+static void ProjoEndSplit(MainWindow* win);
+static Rect ProjoFullscreenRect(MainWindow* win);
 
 // delete a loaded-but-not-yet-attached controller when its target window went
 // away mid-load. If the window was already destroyed, its cbHandler is gone
@@ -5526,6 +5529,8 @@ void CloseWindow(MainWindow* win, bool quitIfLast, bool forceClose) {
     logf("CloseWindow: win: 0x%p, hwndFrame: 0x%x, quitIfLast: %d, forceClose: %d\n", win, win->hwndFrame,
          (int)quitIfLast, (int)forceClose);
     win->isBeingClosed = true;
+    // ProjoPDF: closing one half of the split screen ends it
+    ProjoEndSplit(win);
     ReportIf(forceClose && !quitIfLast);
     if (forceClose) {
         quitIfLast = true;
@@ -7619,7 +7624,7 @@ static void FrameUpdateUi(MainWindow* win) {
         RepositionSelectionToolbar(win);
         RepositionAnnotEditToolbar(win);
         if (win->IsFullScreenOrPresentation()) {
-            Rect fullscreen = HwndGetFullscreenRect(win->hwndFrame);
+            Rect fullscreen = ProjoFullscreenRect(win);
             Rect rect = HwndWindowRect(win->hwndFrame);
             // Windows can alter the frame size on its own (display rotation,
             // XP-era quirks). MoveWindow is a no-op while WS_MAXIMIZE is set
@@ -8246,6 +8251,22 @@ static void OnMenuGoToPage(MainWindow* win) {
     ShowGoToPageDialog(win);
 }
 
+// ProjoPDF: the fullscreen rect, or its left / right half in split screen
+static Rect ProjoFullscreenRect(MainWindow* win) {
+    Rect rect = HwndGetFullscreenRect(win->hwndFrame);
+    if (win->projoHalf == ProjoHalf::None) {
+        return rect;
+    }
+    int half = rect.dx / 2;
+    if (win->projoHalf == ProjoHalf::Right) {
+        rect.x += half;
+        rect.dx -= half;
+    } else {
+        rect.dx = half;
+    }
+    return rect;
+}
+
 void EnterFullScreen(MainWindow* win, bool presentation) {
     if (!HasPermission(Perm::FullscreenAccess) || gPluginMode) {
         return;
@@ -8319,8 +8340,11 @@ void EnterFullScreen(MainWindow* win, bool presentation) {
 
     // remove window styles that add to non-client area
     ws &= ~(WS_CAPTION | WS_THICKFRAME);
-    ws |= WS_MAXIMIZE;
-    Rect rect = HwndGetFullscreenRect(win->hwndFrame);
+    // ProjoPDF: a half-screen window isn't maximized
+    if (win->projoHalf == ProjoHalf::None) {
+        ws |= WS_MAXIMIZE;
+    }
+    Rect rect = ProjoFullscreenRect(win);
 
     UpdateWindowFrameBorderColor(win);
     // disable DWM rounded corners and border for true edge-to-edge fullscreen
@@ -8367,7 +8391,7 @@ static void ResizeFullScreenToCurrentDisplay(MainWindow* win) {
     }
 
     HWND hwnd = win->hwndFrame;
-    Rect fsRect = HwndGetFullscreenRect(hwnd);
+    Rect fsRect = ProjoFullscreenRect(win);
     Rect cur = HwndWindowRect(hwnd);
     bool wasMaximized = (win->nonFullScreenWindowStyle & WS_MAXIMIZE) != 0;
     if (win->InPresentation() && win->windowStateBeforePresentation == WIN_STATE_MAXIMIZED) {
@@ -8396,10 +8420,144 @@ static void ResizeFullScreenToCurrentDisplay(MainWindow* win) {
     RelayoutFrame(win);
 }
 
+// ---- ProjoPDF: split screen ----
+//
+// Two documents side by side, each in its own window covering one half of the
+// monitor in fullscreen (or presentation) mode, so each one scrolls on its own:
+//
+//   +----------------------+----------------------+
+//   | win: left half       | partner: right half  |
+//   | its current document | the other document   |
+//   +----------------------+----------------------+
+//
+// The right window is created for the split. Leaving fullscreen in either
+// window (Esc, F11, F5, Shift+F5) or closing one of them ends the split: the
+// right window closes, the left one goes back to normal.
+
+// unlink the two windows; close the right one or restore the left one,
+// whichever isn't `win` (the caller handles `win`)
+static void ProjoEndSplit(MainWindow* win) {
+    MainWindow* partner = win->projoPartner;
+    if (!partner) {
+        return;
+    }
+    win->projoPartner = nullptr;
+    partner->projoPartner = nullptr;
+    if (win->projoSplitCreated) {
+        partner->projoHalf = ProjoHalf::None;
+        if (IsMainWindowValidAndNotClosing(partner)) {
+            ExitFullScreen(partner);
+        }
+        return;
+    }
+    win->projoHalf = ProjoHalf::None;
+    if (IsMainWindowValid(partner)) {
+        PostMessageW(partner->hwndFrame, WM_CLOSE, 0, 0);
+    }
+}
+
+// the most recently viewed document tab other than the current one
+static WindowTab* ProjoPrevDocTab(MainWindow* win) {
+    WindowTab* curr = win->CurrentTab();
+    Vec<WindowTab*>& hist = *win->tabSelectionHistory;
+    for (int i = len(hist) - 1; i >= 0; i--) {
+        WindowTab* t = hist[i];
+        bool ok = t != curr && win->GetTabIdx(t) >= 0 && !t->IsNonDocumentTab() && len(t->filePath) > 0;
+        if (ok) {
+            return t;
+        }
+    }
+    for (WindowTab* t : win->Tabs()) {
+        if (t != curr && !t->IsNonDocumentTab() && len(t->filePath) > 0) {
+            return t;
+        }
+    }
+    return nullptr;
+}
+
+void ProjoStartSplit(MainWindow* win, WindowTab* rightTab) {
+    if (!win) {
+        return;
+    }
+    // a second time: end the split
+    if (win->projoPartner) {
+        ExitFullScreen(win);
+        return;
+    }
+    if (!win->IsDocLoaded()) {
+        return;
+    }
+    if (!rightTab || rightTab == win->CurrentTab()) {
+        rightTab = ProjoPrevDocTab(win);
+    }
+    if (!rightTab || rightTab->IsNonDocumentTab() || len(rightTab->filePath) == 0) {
+        ShowTemporaryNotification(win, StrL("Écran partagé : ouvrez d'abord un deuxième document"), 3000);
+        return;
+    }
+
+    // presentation if we're in it, fullscreen (with scrolling) otherwise
+    bool presentation = win->InPresentation();
+    TempStr path = str::DupTemp(rightTab->filePath);
+    TabState* state = NewTabStateFromTab(rightTab);
+    if (win->IsFullScreenOrPresentation()) {
+        ExitFullScreen(win);
+    }
+
+    // the right window starts over the left one so that both are on the same monitor
+    Rect frameRc = HwndWindowRect(win->hwndFrame);
+    MainWindow* right = CreateAndShowMainWindow(nullptr);
+    if (!right) {
+        DeleteTabState(state);
+        return;
+    }
+    HwndMoveWindow(right->hwndFrame, &frameRc);
+    LoadArgs args(path, right);
+    args.showWin = true;
+    args.noPlaceWindow = true;
+    args.noSavePrefs = true;
+    LoadDocument(&args);
+    if (state) {
+        WindowTab* tab = right->CurrentTab();
+        if (tab && !tab->IsNonDocumentTab()) {
+            SetTabState(tab, state);
+        }
+        DeleteTabState(state);
+    }
+    if (!IsMainWindowValidAndNotClosing(win) || !IsMainWindowValidAndNotClosing(right)) {
+        return;
+    }
+    if (!right->IsDocLoaded()) {
+        PostMessageW(right->hwndFrame, WM_CLOSE, 0, 0);
+        return;
+    }
+
+    win->projoHalf = ProjoHalf::Left;
+    right->projoHalf = ProjoHalf::Right;
+    right->projoSplitCreated = true;
+    win->projoPartner = right;
+    right->projoPartner = win;
+    EnterFullScreen(right, presentation);
+    EnterFullScreen(win, presentation);
+}
+
 void ExitFullScreen(MainWindow* win) {
     if (!win->IsFullScreenOrPresentation()) {
         return;
     }
+
+    // ProjoPDF: leaving fullscreen ends the split screen
+    if (win->projoPartner) {
+        bool isRight = win->projoSplitCreated;
+        ProjoEndSplit(win);
+        if (isRight) {
+            // the right window goes away instead of being restored
+            if (!win->isBeingClosed) {
+                PostMessageW(win->hwndFrame, WM_CLOSE, 0, 0);
+            }
+            return;
+        }
+    }
+    win->projoHalf = ProjoHalf::None;
 
     if (gSettings->preventSleepInFullscreen) {
         SetThreadExecutionState(ES_CONTINUOUS);
@@ -11057,6 +11215,16 @@ static LRESULT FrameOnCommand(MainWindow* win, HWND hwnd, UINT msg, WPARAM wp, L
 
         case CmdCloseAllTabs: {
             CloseAllTabs(win);
+            break;
+        }
+        case CmdProjoTogglePinTab: {
+            // ProjoPDF: pin / unpin the current tab
+            ProjoTogglePinTab(win->CurrentTab());
+            break;
+        }
+        case CmdProjoSplitView: {
+            // ProjoPDF: start / end the split screen
+            ProjoStartSplit(win, nullptr);
             break;
         }
         case CmdCloseMissingTabs:
@@ -14745,6 +14913,31 @@ static void MaybeStartSearch(MainWindow* win, Str searchTerm) {
     StartSearchFromCommandLine(win, searchTerm);
 }
 
+// ProjoPDF: open the pinned files that the restored session didn't open.
+// The tab that was selected stays selected
+static void ProjoOpenPinnedOnStartup(MainWindow* win) {
+    int n = ProjoPinnedCount();
+    if (!win || n == 0) {
+        return;
+    }
+    WindowTab* selected = win->CurrentTab();
+    for (int i = 0; i < n; i++) {
+        TempStr path = str::DupTemp(ProjoPinnedAt(i));
+        if (len(path) == 0 || IsDocumentOpenOrLoading(path) || !file::Exists(path)) {
+            continue;
+        }
+        LoadArgs args(path, win);
+        args.noSavePrefs = true;
+        LoadDocument(&args);
+        if (!IsMainWindowValidAndNotClosing(win)) {
+            return;
+        }
+    }
+    if (selected && win->GetTabIdx(selected) >= 0) {
+        SelectTabInWindow(selected);
+    }
+}
+
 static MainWindow* LoadOnStartup(Str filePath, const Flags& flags, bool isFirstWin) {
     LoadArgs args(filePath, nullptr);
     args.showWin = !(flags.printDialog && flags.exitWhenDone) && !gPluginMode;
@@ -17505,6 +17698,9 @@ ContinueOpenWindow:
         if (!win) {
             goto Exit;
         }
+    }
+    if (!gForTesting && !gPluginMode && !flags.quickLook && len(flags.stressTestPath) == 0) {
+        ProjoOpenPinnedOnStartup(win);
     }
     if (flags.configureRestrictedUse) {
         ShowConfigureRestrictedUseDialog(win);

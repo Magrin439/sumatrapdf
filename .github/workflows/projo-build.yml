@@ -1,0 +1,36 @@
+name: ProjoPDF build
+on:
+  push:
+    branches: [projo]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    name: ProjoPDF x64 release
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Build
+        run: bun .\cmd\build.ts -all
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item out\rel64\SumatraPDF-static.exe dist\ProjoPDF.exe
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjoPDF
+          path: dist/ProjoPDF.exe
+          retention-days: 30

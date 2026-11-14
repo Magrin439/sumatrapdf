@@ -920,7 +920,8 @@ CommandVisibility GetCommandVisibility(int cmdId, const AppCommandCtx& ctx, Comm
         return CommandVisibility::Disable;
     }
 
-    if ((cmdId == CmdCheckUpdate) && gIsStoreBuild) {
+    // ProjoPDF: updates disabled
+    if (cmdId == CmdCheckUpdate) {
         return CommandVisibility::Hide;
     }
 

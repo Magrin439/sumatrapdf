@@ -142,6 +142,8 @@ static Accel gBuiltInAccelerators[] = {
     {{kVirt, VK_F9}, CmdToggleMenuBar},
     {{kCtrl | kVirt, 'L'}, CmdTogglePresentationMode},
     {{kVirt, VK_F5}, CmdTogglePresentationMode},
+    // ProjoPDF
+    {{kShift | kVirt, VK_F5}, CmdProjoSplitView},
     {{kShift | kVirt, VK_F11}, CmdTogglePresentationMode},
     {{kShift | kCtrl | kVirt, 'L'}, CmdToggleFullscreen},
     {{kVirt, VK_F11}, CmdToggleFullscreen},
