@@ -205,12 +205,23 @@ static void FinishRelayout(DocumentLayout& layout, int canvasDx, int canvasDy, b
     layout.RecalcVisibleParts();
 }
 
+// ProjoPDF: offset of content `extra` pixels narrower than the window
+static int HAlignOffset(int hAlign, int extra) {
+    if (hAlign > 0) {
+        return extra;
+    }
+    if (hAlign < 0) {
+        return 0;
+    }
+    return extra / 2;
+}
+
 static int CenterCanvasX(DocumentLayout& layout, int& canvasDx) {
     if (canvasDx >= layout.viewPort.dx) {
         return 0;
     }
     layout.viewPort.x = 0;
-    int offX = (layout.viewPort.dx - canvasDx) / 2;
+    int offX = HAlignOffset(layout.params.hAlign, layout.viewPort.dx - canvasDx);
     canvasDx = layout.viewPort.dx;
     return offX;
 }
@@ -435,7 +446,7 @@ static void RelayoutRowsAlongX(DocumentLayout& layout, bool flip) {
 
     // Shorter than the window: center, and keep every page inside the canvas so the flip stays positive.
     if (canvasDx < layout.viewPort.dx) {
-        int offX = (layout.viewPort.dx - canvasDx) / 2;
+        int offX = HAlignOffset(params.hAlign, layout.viewPort.dx - canvasDx);
         canvasDx = layout.viewPort.dx;
         for (DocumentLayoutPage& page : layout.pages) {
             if (page.isShown) {

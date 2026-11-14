@@ -46,6 +46,8 @@ struct DocumentLayoutParams {
     bool freePan = false;
     DocumentLayoutMargin windowMargin{};
     Size pageSpacing;
+    // ProjoPDF: pages narrower than the window: 0 centered, 1 right, -1 left
+    int hAlign = 0;
 };
 
 struct FacingRow {

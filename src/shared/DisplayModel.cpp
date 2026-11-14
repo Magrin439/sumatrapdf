@@ -2298,6 +2298,14 @@ void DisplayModel::Relayout(float newZoomVirtual, int newRotation) {
         params.displayR2L = displayR2L;
         params.usePageZooms = true;
         params.windowMargin = ToDocumentLayoutMargin(windowMargin);
+        // ProjoPDF split screen: pages go against the middle of the screen,
+        // with no margin on that side
+        params.hAlign = cb ? cb->HAlign() : 0;
+        if (params.hAlign > 0) {
+            params.windowMargin.right = 0;
+        } else if (params.hAlign < 0) {
+            params.windowMargin.left = 0;
+        }
         params.pageSpacing = pageSpacing;
         params.paddingAfterLastPage = gSettings->paddingAfterLastPage;
         params.scrollFollowsRotation = gSettings->continuousScrollFollowsRotation;

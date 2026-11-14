@@ -77,6 +77,9 @@ struct DocControllerCallback {
     // (re)laid out; refresh anything keyed by pageNo (selection, find, toolbar,
     // toc selection)
     virtual void PagesRenumbered(DisplayModel* dm) = 0;
+    // ProjoPDF split screen: where pages narrower than the window go.
+    // 0: centered, 1: against the right edge, -1: against the left edge
+    virtual int HAlign() { return 0; }
 };
 
 struct DocController;

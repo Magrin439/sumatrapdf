@@ -964,6 +964,13 @@ struct ControllerCallbackHandler : DocControllerCallback {
     void FindAllResultReceived(Str payload) override { BrowserFindAllResultReceived(win, payload); }
     void TocChanged(DocController* ctrl) override;
     void PagesRenumbered(DisplayModel* dm) override;
+    // ProjoPDF split screen: pages go against the middle of the screen
+    int HAlign() override {
+        if (win->projoHalf == ProjoHalf::Left) {
+            return 1;
+        }
+        return win->projoHalf == ProjoHalf::Right ? -1 : 0;
+    }
 };
 
 void ControllerCallbackHandler::TocChanged(DocController* ctrl) {
