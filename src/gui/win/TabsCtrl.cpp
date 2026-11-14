@@ -122,13 +122,8 @@ Color TabCtrl::BgColor() {
     Color inactive = GetColor(kColTabInactiveBg);
     bool isSelected = IsSelected();
     bool isUnderMouse = IsUnderMouse();
-    // a tab with a color of its own keeps it, shaded when it isn't selected
-    if (!IsSpecialColor(ti->tabColor)) {
-        if (isSelected) {
-            return ti->tabColor;
-        }
-        return AccentColor(ti->tabColor, isUnderMouse ? 35 : 25);
-    }
+    // ProjoPDF: a tab's own color is shown as a bar along its bottom (see
+    // TabCtrl::Paint), not as its background
     if (isSelected) {
         return selected;
     }
@@ -286,13 +281,18 @@ void TabCtrl::Paint(VirtPaintCtx& ctx) {
         }
         fmt = gfxTextEllipsis | gfxTextVCenter | gfxTextCenter;
     }
+    // ProjoPDF: a bar along the bottom marks a pinned tab (text color) or a
+    // tab with a color of its own (that color)
+    bool hasOwnColor = !IsSpecialColor(ti->tabColor);
+    if (ti->isDocPinned || hasOwnColor) {
+        int barDy = DpiScale(hasOwnColor ? 4 : 3);
+        Color barCol = hasOwnColor ? ti->tabColor : textColor;
+        gfx->FillRect({r.x + DpiScale(2), r.Bottom() - barDy, std::max(0, r.dx - DpiScale(4)), barDy}, barCol);
+    }
     if (ti->isDocPinned) {
-        // ProjoPDF: margins inside the compact tab, and a bar along the bottom
-        // that marks it as pinned
+        // ProjoPDF: margins inside the compact tab
         int pad = DpiScale(6);
         rFile = {r.x + pad, r.y, std::max(0, r.dx - (2 * pad)), r.dy};
-        int barDy = DpiScale(3);
-        gfx->FillRect({r.x + DpiScale(2), r.Bottom() - barDy, std::max(0, r.dx - DpiScale(4)), barDy}, textColor);
     }
     gfx->DrawText(ti->text, rFile, fmt, font, textColor);
     if (pageDx > 0) {

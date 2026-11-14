@@ -665,6 +665,17 @@ WindowTab* AddTabToWindow(MainWindow* win, WindowTab* tab, bool deferUpdate) {
     }
 
     tab->canvasRc = win->canvasRc;
+    // ProjoPDF: a tab restored without loading its document (lazy loading)
+    // gets its saved color now, not only once it's selected
+    if (tab->tabColor == kColorUnset && len(tab->filePath) > 0) {
+        FileState* fs = FileHistoryFindByPath(tab->filePath);
+        if (fs) {
+            ParsedColor* tabColParsed = GetPrefsColor(fs->tabCol);
+            if (tabColParsed->parsedOk) {
+                tab->tabColor = tabColParsed->col;
+            }
+        }
+    }
     TabInfo* newTab = new TabInfo();
     newTab->text = str::Dup(tab->GetTabTitle());
     newTab->pageText = str::Dup(TabPageSuffixTemp(tab));
