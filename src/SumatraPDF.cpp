@@ -8540,6 +8540,17 @@ void ProjoStartSplit(MainWindow* win, WindowTab* rightTab) {
     right->projoPartner = win;
     EnterFullScreen(right, presentation);
     EnterFullScreen(win, presentation);
+
+    // the right document starts with the left one's layout and zoom, so that
+    // both pages have the same size
+    if (win->IsDocLoaded() && right->IsDocLoaded()) {
+        DisplayMode mode = win->ctrl->GetDisplayMode();
+        float zoom = win->ctrl->GetZoomVirtual();
+        if (right->ctrl->GetDisplayMode() != mode) {
+            SwitchToDisplayMode(right, mode);
+        }
+        SmartZoom(right, zoom, nullptr, false);
+    }
 }
 
 void ExitFullScreen(MainWindow* win) {
